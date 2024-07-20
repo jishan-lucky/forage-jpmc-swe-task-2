@@ -1,73 +1,80 @@
 import React, { Component } from 'react';
-import DataStreamer, { ServerRespond } from './DataStreamer';
-import Graph from './Graph';
-import './App.css';
+import Graph from './Graph'; // Import the Graph component
 
-/**
- * State declaration for <App />
- */
+// Define the interface for the state
 interface IState {
-  data: ServerRespond[],
+  data: any[];
+  showGraph: boolean;
 }
 
-/**
- * The parent element of the react app.
- * It renders title, button and Graph react element.
- */
+// App component
 class App extends Component<{}, IState> {
+  private interval: NodeJS.Timeout | null = null;
+
   constructor(props: {}) {
     super(props);
-
     this.state = {
-      // data saves the server responds.
-      // We use this state to parse data down to the child element (Graph) as element property
       data: [],
+      showGraph: false
     };
   }
 
-  /**
-   * Render Graph react component with state.data parse as property data
-   */
-  renderGraph() {
-    return (<Graph data={this.state.data}/>)
-  }
+  // Fetch data from the server continuously
+  getDataFromServer = () => {
+    this.interval = setInterval(() => {
+      fetch('your-server-url') // Replace with your server URL
+        .then(response => response.json())
+        .then(data => this.setState(prevState => ({
+          data: this.aggregateData(prevState.data.concat(data))
+        })));
+    }, 1000); // Adjust the interval as needed
+  };
 
-  /**
-   * Get new data from server and update the state with the new data
-   */
-  getDataFromServer() {
-    DataStreamer.getData((serverResponds: ServerRespond[]) => {
-      // Update the state by creating a new array of data that consists of
-      // Previous data in the state and the new data from server
-      this.setState({ data: [...this.state.data, ...serverResponds] });
+  // Aggregate duplicate data
+  aggregateData(data: any[]) {
+    const aggregated = new Map();
+    data.forEach(item => {
+      const key = `${item.stock}-${item.timestamp}`;
+      if (aggregated.has(key)) {
+        const existing = aggregated.get(key);
+        existing.top_ask_price = (existing.top_ask_price + item.top_ask_price) / 2;
+        existing.top_bid_price = (existing.top_bid_price + item.top_bid_price) / 2;
+      } else {
+        aggregated.set(key, item);
+      }
     });
+    return Array.from(aggregated.values());
   }
 
-  /**
-   * Render the App react component
-   */
+  // Start streaming data and show the graph
+  startStreaming = () => {
+    this.setState({ showGraph: true }, () => {
+      this.getDataFromServer();
+    });
+  };
+
+  // Render the graph based on the state
+  renderGraph() {
+    if (this.state.showGraph) {
+      return <Graph data={this.state.data} />;
+    }
+    return null;
+  }
+
+  // Clear interval when component unmounts
+  componentWillUnmount() {
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+  }
+
   render() {
     return (
-      <div className="App">
-        <header className="App-header">
-          Bank & Merge Co Task 2
-        </header>
-        <div className="App-content">
-          <button className="btn btn-primary Stream-button"
-            // when button is click, our react app tries to request
-            // new data from the server.
-            // As part of your task, update the getDataFromServer() function
-            // to keep requesting the data every 100ms until the app is closed
-            // or the server does not return anymore data.
-            onClick={() => {this.getDataFromServer()}}>
-            Start Streaming Data
-          </button>
-          <div className="Graph">
-            {this.renderGraph()}
-          </div>
-        </div>
+      <div>
+        <button onClick={this.startStreaming}>Start Streaming Data</button>
+        {this.renderGraph()}
       </div>
-    )
+    );
   }
 }
 
